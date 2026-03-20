@@ -1,0 +1,3 @@
+{
+  "extends": "@interior-design-ai/config/tsconfig.base.json"
+}
