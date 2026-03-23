@@ -1,10 +1,234 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated"
+  provider     = "prisma-client"
+  output       = "../generated"
   moduleFormat = "esm"
-  runtime = "bun"
+  runtime      = "bun"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model UserProfile {
+  id            String  @id @default(cuid())
+  clerkId       String  @unique @map("clerk_id")
+  email         String?
+  name          String?
+  creditBalance Int     @default(0) @map("credit_balance")
+  houses        House[]
+
+  orders             Order[]
+  creditTransactions CreditTransaction[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("user_profiles")
+}
+
+model House {
+  id      String @id @default(cuid())
+  dnaCode String @unique @map("dna_code")
+  name    String @default("Untitled DNA")
+
+  // Owner
+  userId String      @map("user_id")
+  user   UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Architectural Style
+  architecturalStyle String  @default("MODERN") @map("architectural_style")
+  era                String  @default("CONTEMPORARY")
+  spatialDimensions  String  @default("MEDIUM") @map("spatial_dimensions")
+  spatialLayout      String? @map("spatial_layout")
+
+  // Sliders (0-100)
+  formComplexity   Int @default(50) @map("form_complexity")
+  thermalOutput    Int @default(50) @map("thermal_output")
+  lightingExposure Int @default(50) @map("lighting_exposure")
+
+  // Materials & Palette
+  primaryMaterial   String? @map("primary_material")
+  secondaryMaterial String? @map("secondary_material")
+  colorPalette      String? @map("color_palette")
+  texture           String?
+  patternStyle      String? @map("pattern_style")
+
+  // Mood & Atmosphere
+  mood     String?
+  soundDna String? @map("sound_dna")
+
+  // AI description (generated from last synthesis)
+  description String?
+
+  // Relations
+  rooms       Room[]
+  generations Generation[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("houses")
+}
+
+enum RoomType {
+  LIVING_ROOM
+  BEDROOM
+  MASTER_BEDROOM
+  CHILDREN_ROOM
+  BATHROOM
+  KITCHEN
+  DINING_ROOM
+  HOME_OFFICE
+  HALLWAY
+  BALCONY
+  GARAGE
+  OTHER
+}
+
+model Room {
+  id       String   @id @default(cuid())
+  name     String
+  roomType RoomType @map("room_type")
+
+  // Parent house
+  houseId String @map("house_id")
+  house   House  @relation(fields: [houseId], references: [id], onDelete: Cascade)
+
+  // Override fields (nullable = inherit from house)
+  architecturalStyle String? @map("architectural_style")
+  era                String?
+  spatialDimensions  String? @map("spatial_dimensions")
+  spatialLayout      String? @map("spatial_layout")
+
+  formComplexity   Int? @map("form_complexity")
+  thermalOutput    Int? @map("thermal_output")
+  lightingExposure Int? @map("lighting_exposure")
+
+  primaryMaterial   String? @map("primary_material")
+  secondaryMaterial String? @map("secondary_material")
+  colorPalette      String? @map("color_palette")
+  texture           String?
+  patternStyle      String? @map("pattern_style")
+
+  mood     String?
+  soundDna String? @map("sound_dna")
+
+  // Relations
+  generations Generation[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("rooms")
+}
+
+enum GenerationStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Generation {
+  id     String           @id @default(cuid())
+  status GenerationStatus @default(PENDING)
+
+  // What was generated
+  houseId String  @map("house_id")
+  house   House   @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  roomId  String? @map("room_id")
+  room    Room?   @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
+  // Prompt & result
+  prompt      String?
+  description String?
+  errorMessage String? @map("error_message")
+
+  // Progress tracking
+  progress   Int    @default(0)
+  statusText String @default("INITIALIZING...") @map("status_text")
+
+  // Timing
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Relations
+  images             GeneratedImage[]
+  creditTransactions CreditTransaction[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("generations")
+}
+
+enum OrderStatus {
+  CREATED
+  PAID
+  FAILED
+}
+
+model Order {
+  id String @id @default(cuid())
+
+  userId String      @map("user_id")
+  user   UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status     OrderStatus @default(CREATED)
+  planId     String      @map("plan_id")
+  credits    Int
+  amountPaise Int        @map("amount_paise")
+
+  razorpayOrderId   String  @unique @map("razorpay_order_id")
+  razorpayPaymentId String? @map("razorpay_payment_id")
+  razorpaySignature String? @map("razorpay_signature")
+
+  creditTransaction CreditTransaction?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("orders")
+}
+
+enum CreditTransactionType {
+  CREDIT_PURCHASE
+  GENERATION_DEBIT
+}
+
+model CreditTransaction {
+  id String @id @default(cuid())
+
+  userId String      @map("user_id")
+  user   UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type         CreditTransactionType
+  amount       Int
+  balanceAfter Int                   @map("balance_after")
+
+  orderId      String? @unique @map("order_id")
+  order        Order?  @relation(fields: [orderId], references: [id])
+  generationId String? @map("generation_id")
+  generation   Generation? @relation(fields: [generationId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("credit_transactions")
+}
+
+model GeneratedImage {
+  id String @id @default(cuid())
+
+  generationId String     @map("generation_id")
+  generation   Generation @relation(fields: [generationId], references: [id], onDelete: Cascade)
+
+  url       String
+  width     Int?
+  height    Int?
+  category  String?
+  sortOrder Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("generated_images")
 }

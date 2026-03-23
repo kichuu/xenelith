@@ -1,0 +1,12 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'apps/server/Dockerfile'
+      - '-t'
+      - 'asia-south1-docker.pkg.dev/xenelith/xenelith/interior-server'
+      - '.'
+images:
+  - 'asia-south1-docker.pkg.dev/xenelith/xenelith/interior-server'
+timeout: '1200s'

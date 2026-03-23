@@ -1,24 +1,24 @@
 {
-  "$schema": "https://ui.shadcn.com/schema.json",
-  "style": "base-lyra",
-  "rsc": true,
-  "tsx": true,
-  "tailwind": {
-    "config": "",
-    "css": "src/styles/globals.css",
-    "baseColor": "neutral",
-    "cssVariables": true,
-    "prefix": ""
-  },
-  "iconLibrary": "lucide",
-  "aliases": {
-    "components": "@interior-design-ai/ui/components",
-    "utils": "@interior-design-ai/ui/lib/utils",
-    "hooks": "@interior-design-ai/ui/hooks",
-    "lib": "@interior-design-ai/ui/lib",
-    "ui": "@interior-design-ai/ui/components"
-  },
-  "menuColor": "default",
-  "menuAccent": "subtle",
-  "registries": {}
+	"$schema": "https://ui.shadcn.com/schema.json",
+	"style": "base-lyra",
+	"rsc": true,
+	"tsx": true,
+	"tailwind": {
+		"config": "",
+		"css": "src/styles/globals.css",
+		"baseColor": "neutral",
+		"cssVariables": true,
+		"prefix": ""
+	},
+	"iconLibrary": "lucide",
+	"aliases": {
+		"components": "@interior-design-ai/ui/components",
+		"utils": "@interior-design-ai/ui/lib/utils",
+		"hooks": "@interior-design-ai/ui/hooks",
+		"lib": "@interior-design-ai/ui/lib",
+		"ui": "@interior-design-ai/ui/components"
+	},
+	"menuColor": "default",
+	"menuAccent": "subtle",
+	"registries": {}
 }

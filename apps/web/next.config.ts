@@ -1,12 +1,18 @@
-import "@interior-design-ai/env/web";
-import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  typedRoutes: true,
-  reactCompiler: true,
+	typedRoutes: true,
+	reactCompiler: true,
+	output: "standalone",
+	turbopack: {
+		root: "../../",
+	},
 };
 
 export default nextConfig;
 
-initOpenNextCloudflareForDev();
+if (process.env.NODE_ENV === "development") {
+	import("@opennextjs/cloudflare").then(({ initOpenNextCloudflareForDev }) =>
+		initOpenNextCloudflareForDev(),
+	);
+}
