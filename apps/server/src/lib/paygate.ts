@@ -56,11 +56,11 @@ async function request<T>(
 }
 
 interface PayGateOrderDetail {
-	order_id: string;
-	status: string;
-	amount: number;
-	currency: string;
-	gateway_order_id: string;
+	ID: string;
+	Status: string;
+	Amount: number;
+	Currency: string;
+	GatewayOrderID: string;
 }
 
 export const paygate = {

@@ -170,7 +170,7 @@ router.post("/sync", async (req, res) => {
 		if (!order.paygateOrderId) continue;
 		try {
 			const pgOrder = await paygate.getOrder(order.paygateOrderId);
-			if (pgOrder.status === "paid") {
+			if (pgOrder.Status === "paid") {
 				await grantCredits(order.id);
 				credited += order.credits;
 			}
