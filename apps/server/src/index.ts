@@ -6,6 +6,7 @@ import { requireAuth } from "./middleware/auth.js";
 import generationsRouter from "./routes/generations.js";
 import housesRouter from "./routes/houses.js";
 import paymentsRouter from "./routes/payments.js";
+import { webhookRouter } from "./routes/payments.js";
 import roomsRouter from "./routes/rooms.js";
 
 const app = express();
@@ -24,6 +25,9 @@ app.use(express.json());
 app.get("/", (_req, res) => {
 	res.status(200).send("OK");
 });
+
+// Public webhook (no auth)
+app.use("/api/v1/credits/webhook", webhookRouter);
 
 // Authenticated API routes
 const api = express.Router();

@@ -11,61 +11,51 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useCreditsContext } from "@/components/credits-provider";
 import { api } from "@/lib/api-client";
-import { openRazorpayCheckout } from "@/lib/razorpay";
 
 interface CreateOrderResponse {
 	orderId: string;
-	razorpayOrderId: string;
-	razorpayKey: string;
+	checkoutUrl: string;
+	credits: number;
 	amount: number;
 	currency: string;
 }
 
 export function BuyCreditsDialog() {
-	const { plans, isBuyDialogOpen, closeBuyDialog, refetch } =
-		useCreditsContext();
-	const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
+	const { plans, isBuyDialogOpen, closeBuyDialog } = useCreditsContext();
+	const [loadingId, setLoadingId] = useState<string | null>(null);
+	const [customAmount, setCustomAmount] = useState("");
+	const customCredits = Math.floor(Number(customAmount) / 10) || 0;
 
-	const handleBuy = async (planId: string) => {
-		setLoadingPlanId(planId);
+	const handleBuyPlan = async (planId: string) => {
+		setLoadingId(planId);
 		try {
 			const data = await api.post<CreateOrderResponse>(
 				"/credits/orders",
 				{ planId },
 			);
-
-			await openRazorpayCheckout({
-				key: data.razorpayKey,
-				amount: data.amount,
-				currency: data.currency,
-				name: "Editorial Futurism",
-				description: "Design Credits",
-				order_id: data.razorpayOrderId,
-				handler: async (response) => {
-					try {
-						await api.post("/credits/verify", {
-							razorpayOrderId: response.razorpay_order_id,
-							razorpayPaymentId: response.razorpay_payment_id,
-							razorpaySignature: response.razorpay_signature,
-						});
-						await refetch();
-						closeBuyDialog();
-						toast.success("Credits added successfully");
-					} catch {
-						toast.error("Payment verification failed");
-					}
-				},
-				modal: {
-					ondismiss: () => setLoadingPlanId(null),
-				},
-				theme: {
-					color: "#b8a04a",
-				},
-			});
+			window.location.href = data.checkoutUrl;
 		} catch {
 			toast.error("Failed to create order");
-		} finally {
-			setLoadingPlanId(null);
+			setLoadingId(null);
+		}
+	};
+
+	const handleBuyCustom = async () => {
+		const amountPaise = Number(customAmount) * 100;
+		if (amountPaise < 1000) {
+			toast.error("Minimum amount is ₹10");
+			return;
+		}
+		setLoadingId("custom");
+		try {
+			const data = await api.post<CreateOrderResponse>(
+				"/credits/orders",
+				{ amount: amountPaise },
+			);
+			window.location.href = data.checkoutUrl;
+		} catch {
+			toast.error("Failed to create order");
+			setLoadingId(null);
 		}
 	};
 
@@ -77,15 +67,16 @@ export function BuyCreditsDialog() {
 			</DialogHeader>
 			<DialogContent>
 				<p className="text-[11px] text-ef-text-secondary tracking-wide">
-					Each synthesis consumes 1 credit. Select a plan below.
+					Each synthesis consumes 1 credit. Select a plan or enter a
+					custom amount.
 				</p>
 				<div className="grid gap-3">
 					{plans.map((plan) => (
 						<button
 							key={plan.id}
 							type="button"
-							disabled={loadingPlanId !== null}
-							onClick={() => handleBuy(plan.id)}
+							disabled={loadingId !== null}
+							onClick={() => handleBuyPlan(plan.id)}
 							className="flex items-center justify-between border border-ef-border p-4 text-left transition-colors hover:border-ef-gold/40 hover:bg-ef-gold/5 disabled:opacity-50"
 						>
 							<div>
@@ -99,12 +90,54 @@ export function BuyCreditsDialog() {
 								</span>
 							</div>
 							<span className="font-mono text-sm text-ef-gold">
-								{loadingPlanId === plan.id
+								{loadingId === plan.id
 									? "..."
 									: `₹${plan.amountPaise / 100}`}
 							</span>
 						</button>
 					))}
+				</div>
+
+				{/* Custom amount */}
+				<div className="mt-4 border-t border-ef-border pt-4">
+					<p className="mb-2 text-[11px] text-ef-text-secondary uppercase tracking-widest">
+						Custom Amount
+					</p>
+					<div className="flex gap-2">
+						<div className="relative flex-1">
+							<span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ef-text-secondary">
+								₹
+							</span>
+							<input
+								type="number"
+								min="10"
+								step="10"
+								value={customAmount}
+								onChange={(e) =>
+									setCustomAmount(e.target.value)
+								}
+								placeholder="100"
+								className="h-10 w-full border border-ef-border bg-ef-bg-deep pl-7 pr-3 text-sm text-ef-text-primary outline-none placeholder:text-ef-text-secondary/50 focus:border-ef-gold/40"
+							/>
+						</div>
+						<button
+							type="button"
+							disabled={
+								loadingId !== null || customCredits < 1
+							}
+							onClick={handleBuyCustom}
+							className="h-10 border border-ef-accent bg-ef-accent/10 px-4 text-[11px] text-ef-accent uppercase tracking-widest transition-colors hover:bg-ef-accent/20 disabled:opacity-50"
+						>
+							{loadingId === "custom"
+								? "..."
+								: customCredits > 0
+									? `${customCredits} Credits`
+									: "Enter Amount"}
+						</button>
+					</div>
+					<p className="mt-1.5 text-[10px] text-ef-text-secondary">
+						₹10 per credit. Minimum ₹10.
+					</p>
 				</div>
 			</DialogContent>
 		</Dialog>

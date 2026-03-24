@@ -1,7 +1,12 @@
 import prisma from "@interior-design-ai/db";
+import { env } from "@interior-design-ai/env/server";
 import { Router, type Router as RouterType } from "express";
 import { paygate } from "../lib/paygate.js";
-import { PLANS, getPlanById } from "../lib/plans.js";
+import {
+	PLANS,
+	calculateCreditsForAmount,
+	getPlanById,
+} from "../lib/plans.js";
 import { validate } from "../lib/validate.js";
 import { createOrderSchema, verifyPaymentSchema } from "./payments.schema.js";
 
@@ -17,30 +22,54 @@ router.get("/", async (req, res) => {
 	res.json({ balance: profile.creditBalance, plans: PLANS });
 });
 
-// POST /api/v1/credits/orders — create order via PayGate
+// POST /api/v1/credits/orders — create order (plan or custom amount)
 router.post("/orders", validate(createOrderSchema), async (req, res) => {
-	const { planId } = req.body as { planId: string };
-	const plan = getPlanById(planId);
+	const { planId, amount: customAmount } = req.body as {
+		planId?: string;
+		amount?: number;
+	};
 
-	if (!plan) {
-		res.status(400).json({ error: "Invalid plan" });
+	let credits: number;
+	let amountPaise: number;
+	let planLabel: string;
+
+	if (planId) {
+		const plan = getPlanById(planId);
+		if (!plan) {
+			res.status(400).json({ error: "Invalid plan" });
+			return;
+		}
+		credits = plan.credits;
+		amountPaise = plan.amountPaise;
+		planLabel = plan.id;
+	} else if (customAmount) {
+		const calculatedCredits = calculateCreditsForAmount(customAmount);
+		if (!calculatedCredits) {
+			res.status(400).json({ error: "Minimum amount is ₹10" });
+			return;
+		}
+		credits = calculatedCredits;
+		amountPaise = customAmount;
+		planLabel = "custom";
+	} else {
+		res.status(400).json({ error: "Provide planId or amount" });
 		return;
 	}
 
 	const pgOrder = await paygate.createOrder({
 		user_id: req.userProfile!.id,
-		amount: plan.amountPaise,
+		amount: amountPaise,
 		currency: "INR",
 		gateway: "razorpay",
-		description: `${plan.credits} design credits`,
+		description: `${credits} design credits`,
 	});
 
 	const order = await prisma.order.create({
 		data: {
 			userId: req.userProfile!.id,
-			planId: plan.id,
-			credits: plan.credits,
-			amountPaise: plan.amountPaise,
+			planId: planLabel,
+			credits,
+			amountPaise,
 			razorpayOrderId: pgOrder.gateway_order_id,
 			paygateOrderId: pgOrder.order_id,
 		},
@@ -48,9 +77,9 @@ router.post("/orders", validate(createOrderSchema), async (req, res) => {
 
 	res.status(201).json({
 		orderId: order.id,
-		razorpayOrderId: pgOrder.gateway_order_id,
-		razorpayKey: pgOrder.gateway_data.key,
-		amount: plan.amountPaise,
+		checkoutUrl: `${env.PAYGATE_URL}/checkout/${pgOrder.order_id}`,
+		credits,
+		amount: amountPaise,
 		currency: "INR",
 	});
 });
@@ -83,21 +112,75 @@ router.post("/verify", validate(verifyPaymentSchema), async (req, res) => {
 		return;
 	}
 
-	// Verify via PayGate (which verifies with Razorpay)
 	await paygate.verifyPayment({
 		order_id: order.paygateOrderId!,
 		gateway_payment_id: razorpayPaymentId,
 		gateway_signature: razorpaySignature,
 	});
 
-	// Atomic: update order + increment balance + create transaction
-	const result = await prisma.$transaction(async (tx) => {
+	const result = await grantCredits(order.id);
+	res.json({ message: "Payment verified", balance: result.balance });
+});
+
+// Webhook router (public, no auth)
+export const webhookRouter: RouterType = Router();
+webhookRouter.post("/", async (req, res) => {
+	const { order_id, status, gateway_payment_id } = req.body as {
+		order_id: string;
+		status: string;
+		gateway_payment_id?: string;
+	};
+
+	if (status !== "paid") {
+		res.json({ received: true });
+		return;
+	}
+
+	const order = await prisma.order.findFirst({
+		where: { paygateOrderId: order_id },
+	});
+
+	if (!order) {
+		res.status(404).json({ error: "Order not found" });
+		return;
+	}
+
+	if (order.status === "PAID") {
+		res.json({ received: true, already_processed: true });
+		return;
+	}
+
+	await grantCredits(order.id, gateway_payment_id);
+	res.json({ received: true, credits_granted: true });
+});
+
+// GET /api/v1/credits/history — transaction history
+router.get("/history", async (req, res) => {
+	const transactions = await prisma.creditTransaction.findMany({
+		where: { userId: req.userProfile!.id },
+		orderBy: { createdAt: "desc" },
+		take: 50,
+	});
+
+	res.json({ transactions });
+});
+
+// Shared credit granting logic
+async function grantCredits(orderId: string, paymentId?: string) {
+	return prisma.$transaction(async (tx) => {
+		const order = await tx.order.findUniqueOrThrow({
+			where: { id: orderId },
+		});
+
+		if (order.status === "PAID") {
+			return { balance: -1 };
+		}
+
 		await tx.order.update({
 			where: { id: order.id },
 			data: {
 				status: "PAID",
-				razorpayPaymentId,
-				razorpaySignature,
+				...(paymentId && { razorpayPaymentId: paymentId }),
 			},
 		});
 
@@ -119,19 +202,6 @@ router.post("/verify", validate(verifyPaymentSchema), async (req, res) => {
 
 		return { balance: updatedProfile.creditBalance };
 	});
-
-	res.json({ message: "Payment verified", balance: result.balance });
-});
-
-// GET /api/v1/credits/history — transaction history
-router.get("/history", async (req, res) => {
-	const transactions = await prisma.creditTransaction.findMany({
-		where: { userId: req.userProfile!.id },
-		orderBy: { createdAt: "desc" },
-		take: 50,
-	});
-
-	res.json({ transactions });
-});
+}
 
 export default router;

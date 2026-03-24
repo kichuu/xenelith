@@ -14,3 +14,12 @@ export const PLANS: Plan[] = [
 export function getPlanById(id: string): Plan | undefined {
 	return PLANS.find((p) => p.id === id);
 }
+
+// Rate: ₹10 per credit (1000 paise per credit)
+const PAISE_PER_CREDIT = 1000;
+const MIN_AMOUNT_PAISE = 1000; // ₹10 minimum
+
+export function calculateCreditsForAmount(amountPaise: number): number | null {
+	if (amountPaise < MIN_AMOUNT_PAISE) return null;
+	return Math.floor(amountPaise / PAISE_PER_CREDIT);
+}
