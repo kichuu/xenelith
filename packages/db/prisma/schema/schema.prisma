@@ -179,6 +179,7 @@ model Order {
   credits    Int
   amountPaise Int        @map("amount_paise")
 
+  paygateOrderId    String? @map("paygate_order_id")
   razorpayOrderId   String  @unique @map("razorpay_order_id")
   razorpayPaymentId String? @map("razorpay_payment_id")
   razorpaySignature String? @map("razorpay_signature")

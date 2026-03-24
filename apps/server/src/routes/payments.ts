@@ -1,9 +1,7 @@
-import { createHmac } from "node:crypto";
 import prisma from "@interior-design-ai/db";
-import { env } from "@interior-design-ai/env/server";
 import { Router, type Router as RouterType } from "express";
+import { paygate } from "../lib/paygate.js";
 import { PLANS, getPlanById } from "../lib/plans.js";
-import { razorpay } from "../lib/razorpay.js";
 import { validate } from "../lib/validate.js";
 import { createOrderSchema, verifyPaymentSchema } from "./payments.schema.js";
 
@@ -19,7 +17,7 @@ router.get("/", async (req, res) => {
 	res.json({ balance: profile.creditBalance, plans: PLANS });
 });
 
-// POST /api/v1/credits/orders — create Razorpay order for a plan
+// POST /api/v1/credits/orders — create order via PayGate
 router.post("/orders", validate(createOrderSchema), async (req, res) => {
 	const { planId } = req.body as { planId: string };
 	const plan = getPlanById(planId);
@@ -29,13 +27,12 @@ router.post("/orders", validate(createOrderSchema), async (req, res) => {
 		return;
 	}
 
-	const razorpayOrder = await razorpay.orders.create({
+	const pgOrder = await paygate.createOrder({
+		user_id: req.userProfile!.id,
 		amount: plan.amountPaise,
 		currency: "INR",
-		notes: {
-			userId: req.userProfile!.id,
-			planId: plan.id,
-		},
+		gateway: "razorpay",
+		description: `${plan.credits} design credits`,
 	});
 
 	const order = await prisma.order.create({
@@ -44,19 +41,21 @@ router.post("/orders", validate(createOrderSchema), async (req, res) => {
 			planId: plan.id,
 			credits: plan.credits,
 			amountPaise: plan.amountPaise,
-			razorpayOrderId: razorpayOrder.id,
+			razorpayOrderId: pgOrder.gateway_order_id,
+			paygateOrderId: pgOrder.order_id,
 		},
 	});
 
 	res.status(201).json({
 		orderId: order.id,
-		razorpayOrderId: razorpayOrder.id,
+		razorpayOrderId: pgOrder.gateway_order_id,
+		razorpayKey: pgOrder.gateway_data.key,
 		amount: plan.amountPaise,
 		currency: "INR",
 	});
 });
 
-// POST /api/v1/credits/verify — verify payment signature and grant credits
+// POST /api/v1/credits/verify — verify payment via PayGate and grant credits
 router.post("/verify", validate(verifyPaymentSchema), async (req, res) => {
 	const { razorpayOrderId, razorpayPaymentId, razorpaySignature } =
 		req.body as {
@@ -64,16 +63,6 @@ router.post("/verify", validate(verifyPaymentSchema), async (req, res) => {
 			razorpayPaymentId: string;
 			razorpaySignature: string;
 		};
-
-	// HMAC-SHA256 verification
-	const expectedSignature = createHmac("sha256", env.RAZORPAY_KEY_SECRET)
-		.update(`${razorpayOrderId}|${razorpayPaymentId}`)
-		.digest("hex");
-
-	if (expectedSignature !== razorpaySignature) {
-		res.status(400).json({ error: "Invalid payment signature" });
-		return;
-	}
 
 	const order = await prisma.order.findUnique({
 		where: { razorpayOrderId },
@@ -93,6 +82,13 @@ router.post("/verify", validate(verifyPaymentSchema), async (req, res) => {
 		res.status(403).json({ error: "Forbidden" });
 		return;
 	}
+
+	// Verify via PayGate (which verifies with Razorpay)
+	await paygate.verifyPayment({
+		order_id: order.paygateOrderId!,
+		gateway_payment_id: razorpayPaymentId,
+		gateway_signature: razorpaySignature,
+	});
 
 	// Atomic: update order + increment balance + create transaction
 	const result = await prisma.$transaction(async (tx) => {

@@ -1,6 +1,5 @@
 "use client";
 
-import { env } from "@interior-design-ai/env/web";
 import {
 	Dialog,
 	DialogClose,
@@ -17,6 +16,7 @@ import { openRazorpayCheckout } from "@/lib/razorpay";
 interface CreateOrderResponse {
 	orderId: string;
 	razorpayOrderId: string;
+	razorpayKey: string;
 	amount: number;
 	currency: string;
 }
@@ -35,7 +35,7 @@ export function BuyCreditsDialog() {
 			);
 
 			await openRazorpayCheckout({
-				key: env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+				key: data.razorpayKey,
 				amount: data.amount,
 				currency: data.currency,
 				name: "Editorial Futurism",
