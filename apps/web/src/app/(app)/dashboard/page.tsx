@@ -2,11 +2,40 @@
 
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect } from "react";
+import { toast } from "sonner";
+import { useCreditsContext } from "@/components/credits-provider";
 import { DnaCard, DnaCardSkeleton } from "@/components/dna-card";
 import { useHouses } from "@/hooks/use-houses";
+import { api } from "@/lib/api-client";
 
 export default function DashboardPage() {
 	const { houses, loading, error } = useHouses();
+	const { refetch } = useCreditsContext();
+	const searchParams = useSearchParams();
+	const router = useRouter();
+
+	useEffect(() => {
+		if (searchParams.get("payment") === "success") {
+			api.post<{ balance: number; credited: number }>("/credits/sync")
+				.then((data) => {
+					refetch();
+					if (data.credited > 0) {
+						toast.success(`${data.credited} credits added`);
+					} else {
+						toast.success("Payment received");
+					}
+				})
+				.catch(() => {
+					refetch();
+					toast.info("Payment is being processed");
+				})
+				.finally(() => {
+					router.replace("/dashboard");
+				});
+		}
+	}, [searchParams, refetch, router]);
 
 	return (
 		<div className="mx-auto w-full max-w-6xl px-6 py-10">

@@ -6,6 +6,7 @@ interface PayGateOrderRequest {
 	currency: string;
 	gateway: string;
 	description?: string;
+	metadata?: Record<string, string>;
 }
 
 interface PayGateOrderResponse {
@@ -54,12 +55,23 @@ async function request<T>(
 	return data as T;
 }
 
+interface PayGateOrderDetail {
+	order_id: string;
+	status: string;
+	amount: number;
+	currency: string;
+	gateway_order_id: string;
+}
+
 export const paygate = {
 	createOrder: (body: PayGateOrderRequest) =>
 		request<PayGateOrderResponse>("/orders", {
 			method: "POST",
 			body: JSON.stringify(body),
 		}),
+
+	getOrder: (orderId: string) =>
+		request<PayGateOrderDetail>(`/orders/${orderId}`),
 
 	verifyPayment: (body: PayGateVerifyRequest) =>
 		request<PayGateVerifyResponse>("/payments/verify", {

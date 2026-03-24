@@ -62,6 +62,9 @@ router.post("/orders", validate(createOrderSchema), async (req, res) => {
 		currency: "INR",
 		gateway: "razorpay",
 		description: `${credits} design credits`,
+		metadata: {
+			app_success_url: `${env.FRONTEND_URL}/dashboard?payment=success`,
+		},
 	});
 
 	const order = await prisma.order.create({
@@ -152,6 +155,36 @@ webhookRouter.post("/", async (req, res) => {
 
 	await grantCredits(order.id, gateway_payment_id);
 	res.json({ received: true, credits_granted: true });
+});
+
+// POST /api/v1/credits/sync — check PayGate for any unpaid orders and grant credits
+router.post("/sync", async (req, res) => {
+	const pendingOrders = await prisma.order.findMany({
+		where: { userId: req.userProfile!.id, status: "CREATED" },
+		orderBy: { createdAt: "desc" },
+		take: 5,
+	});
+
+	let credited = 0;
+	for (const order of pendingOrders) {
+		if (!order.paygateOrderId) continue;
+		try {
+			const pgOrder = await paygate.getOrder(order.paygateOrderId);
+			if (pgOrder.status === "paid") {
+				await grantCredits(order.id);
+				credited += order.credits;
+			}
+		} catch {
+			// Order might not exist or be pending — skip
+		}
+	}
+
+	const profile = await prisma.userProfile.findUniqueOrThrow({
+		where: { id: req.userProfile!.id },
+		select: { creditBalance: true },
+	});
+
+	res.json({ balance: profile.creditBalance, credited });
 });
 
 // GET /api/v1/credits/history — transaction history
